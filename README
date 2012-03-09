@@ -1,0 +1,19 @@
+w3.org hosts a lot of documents that are required for validating, and often even just parsing XML documents. These DTD's, XMLSchemas, and other support files are typically very static (never change), but still need to be referenced when parsing. The huge demand for these documents has put a lot of load on the w3.org systems. So much load in fact that the systems are being crippled by it.
+
+The w3.org blog (and comments) describe the issue, and their 'solution': http://www.w3.org/blog/systeam/2008/02/08/w3c_s_excessive_dtd_traffic/
+
+The response by w3.org has been to 'throttle' access to the system, in this case, by adding a 30 second delay to any request for these supporting documents. To mitigate the effect of these throttles, it appears that the w3.org team have been careful about setting up generous cache-control protocols for the affected documents. This cache-control information can be used to build good caches of the documents. Since the documents are essentially static, this makes sense.
+
+The validity of the w3.org response is debatable, but, the effect is that any XML parsing of these documents is very slow if each resource has a 30-second delay.
+
+There are a number of work-arounds to the problem, including 'catalogs' of resources, caching proxy servers, and others.
+
+This project is yet another solution. In essence, it is a local caching system, storing these documents on disk while they are valid, and 'serving' the documents from disk until the local copy expires.
+
+This solution largely eliminates the performance impact of these w3.org resources. It also removes the need to locate, configure and maintain web catalogs or proxy servers.
+
+As the maintainer of the JDOM project it is apparent that JDOM usability is affected by this situation. On the other hand, the relationship between this problem and JDOM is technically quite tenuous.... it is not really within the scope of JDOM to provide Entity Resolvers... at least not yet. Certainly, a solution to the Resolver problem is useful beyond the scope of just JDOM, and the solution is completey independant of JDOM.
+
+This Resolver project is essentially a generaly purpose Java-based Caching Resolver useful for any HTTP (HTTPS) based URL's. It contains a general-purpose front-end that can be used to plug in as an org.xml.sax.EntityResolver and javax.xml.transform.URIResolver. Additionally, this package has the ability to create a more general purpose in-memory cache that can imporv performance even more (at the expense of occupying memory....).
+
+
