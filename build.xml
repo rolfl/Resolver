@@ -53,7 +53,10 @@
 	
 	<target name="compile" depends="init">
 		<javac destdir="${classes}" srcdir="src/main" debug="true" optimize="true" includeantruntime="true" />
-		<jar destfile="${jar.release}" basedir="${classes}" />
+		<jar destfile="${jar.release}">
+			<fileset dir="${classes}" includes="**" />
+			<fileset dir="${basedir}" includes="LICENSE, NOTICE" />
+		</jar>
 	</target>
 	
 	<target name="test" depends="compile" >
