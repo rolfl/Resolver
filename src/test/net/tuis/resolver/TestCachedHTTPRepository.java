@@ -1,15 +1,12 @@
 package net.tuis.resolver;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 import java.io.CharArrayWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.URL;
-import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -53,7 +50,7 @@ public class TestCachedHTTPRepository {
 	
 	@Test
 	public void testResolveW3() throws IOException {
-		CachedURLRepository repo = new CachedURLRepository();
+		CachedHTTPRepository repo = new CachedHTTPRepository();
 		final String xhtmldtd = result(repo.resolve("-//W3C//DTD XHTML 1.0 Strict//EN",
 				new URL("http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd")));
 		assertTrue(xhtmldtd != null);
@@ -61,7 +58,7 @@ public class TestCachedHTTPRepository {
 	
 	@Test
 	public void testResolveLocal() throws IOException {
-		CachedURLRepository repo = new CachedURLRepository();
+		CachedHTTPRepository repo = new CachedHTTPRepository();
 		final String val = result(repo.resolve(null, new URL("http://localhost/index.html")));
 		assertEquals("<html><body><h1>It works!</h1></body></html>", val);
 		final String xhtmldtd = result(repo.resolve("-//W3C//DTD XHTML 1.0 Strict//EN",

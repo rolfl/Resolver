@@ -25,6 +25,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -48,6 +50,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.ext.EntityResolver2;
 
 /**
  * Accesses web-based resources, caches them on disk for future retrieval. The
@@ -97,14 +103,14 @@ import java.util.regex.Pattern;
  * <pre>
  * ConsoleHandler ch = new ConsoleHandler();
  * ch.setLevel(Level.ALL);
- * Logger logger = Logger.getLogger(CachedURLRepository.class.getName());
+ * Logger logger = Logger.getLogger(CachedHTTPRepository.class.getName());
  * logger.setLevel(Level.ALL);
  * logger.addHandler(ch);
  * </pre>
  * 
  * @author Rolf Lear
  */
-public class CachedHTTPRepository {
+public class CachedHTTPRepository implements EntityResolver2 {
 
 	/**
 	 * Used to indicate that there is a problem with a Cache Entry. The message will describe the problem.
@@ -133,7 +139,7 @@ public class CachedHTTPRepository {
 	private static final ThreadFactory threadfac = new ThreadFactory() {
 		@Override
 		public Thread newThread(Runnable r) {
-			final Thread ret = new Thread(r, "CachedURLRepository Lock Interrupt Thread " + threadid.incrementAndGet());
+			final Thread ret = new Thread(r, "CachedHTTPRepository Lock Interrupt Thread " + threadid.incrementAndGet());
 			ret.setDaemon(true);
 			return ret;
 		}
@@ -143,13 +149,13 @@ public class CachedHTTPRepository {
 	private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1, threadfac);
 
 	/** used for logging messages. */
-	private static final Logger logger = Logger.getLogger(CachedURLRepository.class.getName());
+	private static final Logger logger = Logger.getLogger(CachedHTTPRepository.class.getName());
 
 	/** Only populated once per JVM */
 	private static final AtomicReference<File> defaultdir = new AtomicReference<File>();
 
 	/** What to tell Web servers we are */
-	private static final String DEFAULTUSERAGENT = CachedURLRepository.class.getName() + " 1.0";
+	private static final String DEFAULTUSERAGENT = CachedHTTPRepository.class.getName() + " 1.0";
 
 	/** Thread-local for storing md5 MessageDigests */
 	private static final ThreadLocal<MessageDigest> localmd5 = new ThreadLocal<MessageDigest>();
@@ -157,7 +163,7 @@ public class CachedHTTPRepository {
 	// HTTP 1.1 protocol says, unless specified otherwise, the charset is...
 	private static final String DEFCHARSET = "ISO-8859-1";
 
-	// The following are properties we use for managing the cache. CURL is short for CachedURLRepository
+	// The following are properties we use for managing the cache. CURL is short for CachedHTTPRepository
 	private static final String EXPIRES    = "CURL_EXPIRES";
 	private static final String EXPIRESHR  = "CURL_EXPIRESHR";
 	private static final String SYSTEMURL  = "CURL_URL";
@@ -294,7 +300,7 @@ public class CachedHTTPRepository {
 			return current;
 		}
 
-		final String sysdir = System.getProperty(CachedURLRepository.class.getName());
+		final String sysdir = System.getProperty(CachedHTTPRepository.class.getName());
 		if (sysdir != null) {
 			// use the specified cachefolder.
 			final File f = new File(sysdir);
@@ -515,7 +521,7 @@ public class CachedHTTPRepository {
 	private final AtomicInteger locktimeout = new AtomicInteger();
 
 	/**
-	 * Create a CachedURLRepository that uses a default location for the cache.
+	 * Create a CachedHTTPRepository that uses a default location for the cache.
 	 * 
 	 * @throws IOException
 	 *         if the Default cachefolder is not accessible
@@ -1255,7 +1261,7 @@ public class CachedHTTPRepository {
 	private void propertiesToChannel(final FileChannel channel, final Properties props) throws IOException {
 		// write the properties to a byte array.
 		final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		props.store(baos, "CachedURLRepository");
+		props.store(baos, "CachedHTTPRepository");
 		props.setProperty(TOUCHTIME, String.format("%tc", System.currentTimeMillis()));
 		final byte[] data = baos.toByteArray();
 
@@ -1269,5 +1275,41 @@ public class CachedHTTPRepository {
 		// set the channel's length as the limit of the data.
 		channel.truncate(data.length);
 	}
+
+
+
+	@Override
+	public InputSource resolveEntity(String publicId, String systemId)
+			throws SAXException, IOException {
+		return resolve(publicId, new URL(systemId));
+	}
+
+	/**
+	 * This CachedHTTPRepository has nothing to do with external subsets.
+	 * It always returns null.
+	 */
+	@Override
+	public InputSource getExternalSubset(String name, String baseURI)
+			throws SAXException, IOException {
+		return null;
+	}
+
+	@Override
+	public InputSource resolveEntity(String name, String publicId,
+			String baseURI, String systemId) throws SAXException, IOException {
+		try {
+			final URI sysuri = new URI(systemId);
+			if (!sysuri.isAbsolute() && baseURI != null) {
+				final URI base = new URI(baseURI);
+				final URI resolved = base.resolve(sysuri);
+				return resolve(publicId, resolved.toURL());
+			}
+			return resolve(publicId, sysuri.toURL());
+		} catch (URISyntaxException usi) {
+			throw new SAXException("Unable to resolve Base (" + baseURI + 
+					") and System (" + systemId + ") URI's to a URL", usi);
+		}
+	}
+
 
 }
