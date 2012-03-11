@@ -1,0 +1,120 @@
+<project name="Resolver" default="dist" >
+	<property file="build.properties" />
+
+	<tstamp prefix="copyright">
+		<format pattern="yyyy" property="YEAR"/>
+	</tstamp>
+	
+	<property name="groupid" value="net.tuis" />
+	<property name="name" value="resolver" />
+	<property name="Name" value="Resolver" />
+	<property name="version" value="0.0.0" />
+	<property name="year" value="${copyright.YEAR}" />
+	
+	<property name="junit.jar"   value="lib/junit-4.8.2.jar" />
+	
+	
+	<property name="dist" value="dist" />
+	<property name="classes" value="${dist}/classes" />
+	<property name="tests" value="${dist}/tests" />
+	<property name="jars" value="${dist}/jars" />
+	<property name="apidocs" value="${dist}/apidocs" />
+	<property name="coverage" value="${dist}/coverage" />
+	<property name="test.xml" value="${dist}/test.xml" />
+	<property name="test.report" value="${dist}/test.report" />
+	
+	<property name="jar.release" value="${jars}/${name}-${version}.jar" />
+	<property name="jar.source"  value="${jars}/${name}-source-${version}.jar" />
+	<property name="jar.apidoc"  value="${jars}/${name}-apidocs-${version}.jar" />
+	
+	<target name="clean.check">
+		<available property="wasdist" file="${dist}"/>
+	</target>
+	
+	<target name="clean.dist" if="wasdist">
+		<delete dir="${dist}" failonerror="true" />
+	</target>
+	
+	<target name="clean" depends="clean.check, clean.dist"/>
+	
+	<target name="init">
+		<mkdir dir="${dist}" />
+		<mkdir dir="${classes}" />
+		<mkdir dir="${tests}" />
+		<mkdir dir="${jars}" />
+		<mkdir dir="${apidocs}" />
+		<mkdir dir="${coverage}" />
+		<mkdir dir="${test.xml}" />
+		<mkdir dir="${test.report}" />
+		
+		<echo>${Name} ${version} : ${year} - ${copyright.TODAY}</echo>
+		
+	</target>
+	
+	<target name="compile" depends="init">
+		<javac destdir="${classes}" srcdir="src/main" debug="true" optimize="true" includeantruntime="true" />
+		<jar destfile="${jar.release}" basedir="${classes}" />
+	</target>
+	
+	<target name="test" depends="compile" >
+		<javac destdir="${tests}" srcdir="src/test" debug="true" optimize="true" includeantruntime="true">
+			<classpath>
+				<pathelement location="${classes}" />
+				<pathelement location="${junit.jar}"/>
+			</classpath>
+		</javac>
+		
+		<junit fork="true" forkmode="once" haltonerror="false" haltonfailure="false"
+			failureproperty="junit.failed" printsummary="true" timeout="100000"
+			showoutput="true" includeantruntime="true" >
+			
+			<classpath>
+				<pathelement location="${classes}" />
+				<pathelement location="${tests}" />
+				<pathelement location="${junit.jar}" />
+			</classpath>
+			
+			<formatter type="xml"/>
+			
+			<batchtest haltonerror="false" haltonfailure="false"
+				failureproperty="junit.failed" todir="${test.xml}" >
+				<sort>
+					<name />
+					<fileset dir="src/test">
+						<include name="**/Test*.java"/>
+					</fileset>
+				</sort>
+			</batchtest>
+			
+		</junit>
+
+		<junitreport todir="${test.report}">
+		  <fileset dir="${test.xml}">
+		    <include name="TEST-*.xml"/>
+		  </fileset>
+			
+		  <report format="frames" todir="${test.report}"/>
+		</junitreport>
+		
+	</target>
+	
+	<target name="apidoc">
+		<javadoc packagenames="net.tuis.resolver"
+             sourcepath="src/main"
+             destdir="${apidocs}"
+             author="true"
+             version="true"
+             use="true"
+             splitindex="true"
+             noindex="false"
+             windowtitle="${Name} v${version}"
+             doctitle="${Name} v${version}&lt;br&gt;API Specification"
+             header="&lt;b&gt;${Name}&lt;br&gt;&lt;font size='-1'&gt;${version}&lt;/font&gt;&lt;/b&gt;"
+             bottom="Copyright &#169; ${year} Rolf Lear.">
+		</javadoc>
+	</target>
+	
+	<target name="dist" depends="test, apidoc">
+		
+	</target>
+</project>
