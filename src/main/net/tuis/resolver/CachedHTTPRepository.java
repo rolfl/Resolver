@@ -396,6 +396,22 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	}
 
 	/**
+	 * Get a unique Object used to lock each item in the cache.
+	 * 
+	 * @param key
+	 *        The location for this lock.
+	 * @return The locking object.
+	 */
+	private static Object getSyncLock(String key) {
+		final Object lock = new Object();
+		final Object o = keymap.putIfAbsent(key, lock);
+		if (o != null) {
+			return o;
+		}
+		return lock;
+	}
+
+	/**
 	 * Set up an interruptible system of file-lock creation. The goal is to try
 	 * to lock a file, but give up after a set time (timeout milliseconds).
 	 * 
@@ -644,22 +660,6 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	}
 
 	/**
-	 * Get a unique Object used to lock each item in the cache.
-	 * 
-	 * @param key
-	 *        The location for this lock.
-	 * @return The locking object.
-	 */
-	private Object getSyncLock(String key) {
-		final Object lock = new Object();
-		final Object o = keymap.putIfAbsent(key, lock);
-		if (o != null) {
-			return o;
-		}
-		return lock;
-	}
-
-	/**
 	 * Resolve a URL to a Resource.
 	 * 
 	 * @param publicID
@@ -729,197 +729,212 @@ public class CachedHTTPRepository implements EntityResolver2 {
 			if (logger.isLoggable(Level.FINE)) {
 				logger.fine(lk + " Resolving " + url);
 			}
-
-			final File control = new File(cachefolder, kk + ".control");
-			final File datafile = new File(cachefolder, kk + ".data");
 			
-			{
-				// another simple scope-limiting block.
-				// no need to make the 'dir' variable stick around
-				// too long.
-				final File dir = control.getParentFile();
-				if (!dir.isDirectory()) {
-					if (!dir.mkdirs()) {
-						logger.fine(lk + " Abandoning: Unable to create cachefolder " + dir);
-						return null;
-					}
-				}
-			}
+			boolean failed = false;
+			
+			try {
 
-			// start off with a shared lock.
-			boolean lockshared = true;
-
-			int tries = 0;
-			// we have a number of 'continue' statements in this loop.
-			// by labelling the loop it is easier to manage.
-			// note, internal try-catch blocks have finally blocks... so
-			// the 'continue' statements may run finally blocks before
-			// actually looping back.
-			attemptloop: while (++tries <= 5) {
+				final File control = new File(cachefolder, kk + ".control");
+				final File datafile = new File(cachefolder, kk + ".data");
 				
-				if (logger.isLoggable(Level.FINEST)) {
-					logger.finest(String.format("%s Attempt %d of 5.", lk, tries));
-				}
-
-				// rafok will be set if the RAF is to beclosed in a normal state.
-				boolean rafxthrow = false;
-				final RandomAccessFile raf = new RandomAccessFile(control, "rw");
-				try {
-					// the finally block of this try/catch must ensure the RAF is closed.
-					// the raf.close() will also close the channel.
-					final FileChannel channel = raf.getChannel();
-
-					// Lock the entire file.
-					// this will block for locktimeout seconds or until the file becomes
-					// available.
-					final FileLock slock = lockFile(lk, control, channel, locktimeout.get(), lockshared);
-
-					if (slock == null) {
-						// timed out! try again
-						// in order to be here, there must be one of:
-						// 1. some OS issue
-						// 2. The file is share-locked by some other JVM and we
-						// are
-						// attempting an exclusive lock,
-						// 3. The file is exclusive-locked by some other JVM,
-						// and we are trying to lock it.....
-						if (logger.isLoggable(Level.FINEST)) {
-							logger.finest(lk + " Timeout getting " + (lockshared ? "shared" : "exclusive") 
-									+ " lock on control file. Will try again ");
+				{
+					// another simple scope-limiting block.
+					// no need to make the 'dir' variable stick around
+					// too long.
+					final File dir = control.getParentFile();
+					if (!dir.isDirectory()) {
+						if (!dir.mkdirs()) {
+							logger.fine(lk + " Abandoning: Unable to create cachefolder " + dir);
+							return null;
 						}
-						// indicate a close() failure thould be thrown
-						rafxthrow = true;
-						continue attemptloop;
 					}
-
-					// OK, we have lock on the control file... let's play.
-					// normally, one would not use exceptions to manage program
-					// control.... but, in this case there are so many places that
-					// could cause a cache entry to be broken, we do.
-					// So, the 'normal' case is to use an existing cache entry.
-					// If the existing cache entry is broken for some reason (or
-					// does not exist), then we throw a special exception, and
-					// rebuild the entry.
-					// Remember, at this point we have a sync lock on this entry
-					// in this JVM, and also
-					// a file-lock (perhaps shared) on the control file....
-
-					// this is the reference time to see if things
-					// are out of date.
-					final long time = System.currentTimeMillis();
-
+				}
+	
+				// start off with a shared lock.
+				boolean lockshared = true;
+	
+				int tries = 0;
+				// we have a number of 'continue' statements in this loop.
+				// by labelling the loop it is easier to manage.
+				// note, internal try-catch blocks have finally blocks... so
+				// the 'continue' statements may run finally blocks before
+				// actually looping back.
+				attemptloop: while (++tries <= 5) {
+					
+					if (logger.isLoggable(Level.FINEST)) {
+						logger.finest(String.format("%s Attempt %d of 5.", lk, tries));
+					}
+	
+					// rafok will be set if the RAF is to beclosed in a normal state.
+					boolean rafxthrow = false;
+					final RandomAccessFile raf = new RandomAccessFile(control, "rw");
 					try {
-						if (logger.isLoggable(Level.FINEST)) {
-							logger.finest(String
-									.format("%s %s Lock obtained ", lk, lockshared ? "Shared" : "Exclusive"));
-						}
-
-						try {
-
-							if (!datafile.exists()) {
-								// need to load from fresh.
-								throw new CacheEntryCorruptException("Non-existing data file: " + datafile);
+						// the finally block of this try/catch must ensure the RAF is closed.
+						// the raf.close() will also close the channel.
+						final FileChannel channel = raf.getChannel();
+	
+						// Lock the entire file.
+						// this will block for locktimeout seconds or until the file becomes
+						// available.
+						final FileLock slock = lockFile(lk, control, channel, locktimeout.get(), lockshared);
+	
+						if (slock == null) {
+							// timed out! try again
+							// in order to be here, there must be one of:
+							// 1. some OS issue
+							// 2. The file is share-locked by some other JVM and we
+							// are
+							// attempting an exclusive lock,
+							// 3. The file is exclusive-locked by some other JVM,
+							// and we are trying to lock it.....
+							if (logger.isLoggable(Level.FINEST)) {
+								logger.finest(lk + " Timeout getting " + (lockshared ? "shared" : "exclusive") 
+										+ " lock on control file. Will try again ");
 							}
-
-							final Properties props = chanToProperties(channel);
-
-							// when do the properties say we expire.
-							final long expires = requireLongProperty(props, EXPIRES);
-							final long lastmod = requireLongProperty(props, MODIFIED);
-							final String xmd5 = requireProperty(props, MD5);
-							final String charset = requireProperty(props, CHARSET);
-
-							final String urlef = url.toExternalForm();
-
-							checkProperty(props, RESKEY, kk);
-							checkProperty(props, SYSTEMURL, urlef);
-
-							// all properties are in order
-							// cache entry is complete...
-
-							if (expires < time) {
-								// it has expired... let's update it....
-								if (logger.isLoggable(Level.FINEST)) {
-									logger.finest(String.format("%s Resource expired %.3fs ago.", lk,
-											(time - expires) / 1000.0));
-								}
-
-								if (lockshared) {
-									// need to reload it....
-									// and we need an exclusive lock...
-									lockshared = false;
-									if (logger.isLoggable(Level.FINE)) {
-										logger.fine(String.format("%s Cache out of date. Upgrading to exclusive lock.",
-												lk));
-									}
-									continue attemptloop;
-								}
-								// disk cache has expired, rebuild, or
-								// something.
-
-								// we have an exclusive lock, we check the
-								// resource is up to date on the server....
-								// if the server file has changed, we throw a
-								// CacheEntryCorrupt exception....
-								checkResource(time, lk, channel, lastmod, props, url);
-
-							}
-
-							// If we get here, then the cache entry is in good
-							// condition
-							// this readfile will compare the md5 of the actual
-							// data with the expectations...
-							// which may also throw a cacheentrycorrupt....
-							final byte[] data = readFile(kk, xmd5, datafile);
-							
-							// indicate a close() failure should be thrown
+							// indicate a close() failure thould be thrown
 							rafxthrow = true;
-
-							// return our new resource
-							return new Resource(data, null, charset, publicID, urlef, expires);
-
-						} catch (CacheEntryCorruptException cece) {
-							if (lockshared) {
-								if (logger.isLoggable(Level.FINE)) {
-									logger.fine(String.format("%s Cache entry rebuild needs exclusive lock: %s", lk,
-											cece.getMessage()));
+							continue attemptloop;
+						}
+	
+						// OK, we have lock on the control file... let's play.
+						// normally, one would not use exceptions to manage program
+						// control.... but, in this case there are so many places that
+						// could cause a cache entry to be broken, we do.
+						// So, the 'normal' case is to use an existing cache entry.
+						// If the existing cache entry is broken for some reason (or
+						// does not exist), then we throw a special exception, and
+						// rebuild the entry.
+						// Remember, at this point we have a sync lock on this entry
+						// in this JVM, and also
+						// a file-lock (perhaps shared) on the control file....
+	
+						// this is the reference time to see if things
+						// are out of date.
+						final long time = System.currentTimeMillis();
+	
+						try {
+							if (logger.isLoggable(Level.FINEST)) {
+								logger.finest(String
+										.format("%s %s Lock obtained ", lk, lockshared ? "Shared" : "Exclusive"));
+							}
+	
+							try {
+	
+								if (!datafile.exists()) {
+									// need to load from fresh.
+									throw new CacheEntryCorruptException("Non-existing data file: " + datafile);
 								}
-								lockshared = false;
+	
+								final Properties props = chanToProperties(channel);
+	
+								// when do the properties say we expire.
+								final long expires = requireLongProperty(props, EXPIRES);
+								final long lastmod = requireLongProperty(props, MODIFIED);
+								final String xmd5 = requireProperty(props, MD5);
+								final String charset = requireProperty(props, CHARSET);
+	
+								final String urlef = url.toExternalForm();
+	
+								checkProperty(props, RESKEY, kk);
+								checkProperty(props, SYSTEMURL, urlef);
+	
+								// all properties are in order
+								// cache entry is complete...
+	
+								if (expires < time) {
+									// it has expired... let's update it....
+									if (logger.isLoggable(Level.FINEST)) {
+										logger.finest(String.format("%s Resource expired %.3fs ago.", lk,
+												(time - expires) / 1000.0));
+									}
+	
+									if (lockshared) {
+										// need to reload it....
+										// and we need an exclusive lock...
+										lockshared = false;
+										if (logger.isLoggable(Level.FINE)) {
+											logger.fine(String.format("%s Cache out of date. Upgrading to exclusive lock.",
+													lk));
+										}
+										continue attemptloop;
+									}
+									// disk cache has expired, rebuild, or
+									// something.
+	
+									// we have an exclusive lock, we check the
+									// resource is up to date on the server....
+									// if the server file has changed, we throw a
+									// CacheEntryCorrupt exception....
+									checkResource(time, lk, channel, lastmod, props, url);
+	
+								}
+	
+								// If we get here, then the cache entry is in good
+								// condition
+								// this readfile will compare the md5 of the actual
+								// data with the expectations...
+								// which may also throw a cacheentrycorrupt....
+								final byte[] data = readFile(kk, xmd5, datafile);
+								
 								// indicate a close() failure should be thrown
 								rafxthrow = true;
-								continue attemptloop;
+	
+								// return our new resource
+								return new Resource(data, null, charset, publicID, urlef, expires);
+	
+							} catch (CacheEntryCorruptException cece) {
+								if (lockshared) {
+									if (logger.isLoggable(Level.FINE)) {
+										logger.fine(String.format("%s Cache entry rebuild needs exclusive lock: %s", lk,
+												cece.getMessage()));
+									}
+									lockshared = false;
+									// indicate a close() failure should be thrown
+									rafxthrow = true;
+									continue attemptloop;
+								}
+								// we have an exclusive lock, and there's something amiss with the
+								// cache entry, recreate it.
+								final Resource ret = recreateResource(lk, kk, channel, datafile, url, publicID, time);
+								// indicate a close() failure should be thrown
+								rafxthrow = true;
+								return ret;
 							}
-							// we have an exclusive lock, and there's something amiss with the
-							// cache entry, recreate it.
-							final Resource ret = recreateResource(lk, kk, channel, datafile, url, publicID, time);
-							// indicate a close() failure should be thrown
-							rafxthrow = true;
-							return ret;
+	
+						} finally {
+							slock.release();
 						}
-
 					} finally {
-						slock.release();
-					}
-				} finally {
-					// we did not do a clean close on the RandomAccessFile.
-					// which also means we are in the process of throwing an
-					// exception already.
-					try {
-						// raf.close() will also close the attached channel.
-						raf.close();
-					} catch (IOException ioe) {
-						if (rafxthrow) {
-							throw ioe;
+						// we did not do a clean close on the RandomAccessFile.
+						// which also means we are in the process of throwing an
+						// exception already.
+						try {
+							// raf.close() will also close the attached channel.
+							raf.close();
+						} catch (IOException ioe) {
+							if (rafxthrow) {
+								throw ioe;
+							}
+							// we must already be throwing an exception. Just log this one.
+							logger.log(Level.FINE, "Unable to close RandomAccessFile on " + control, ioe);
 						}
-						// we must already be throwing an exception. Just log this one.
-						logger.log(Level.FINE, "Unable to close RandomAccessFile on " + control, ioe);
 					}
 				}
+				if (logger.isLoggable(Level.FINE)) {
+					logger.fine(String.format("%s Exceeded %d attempts. Giving up.", lk, tries - 1));
+				}
+				return null;
+			} catch (IOException ioe) {
+				failed = true;
+				if (logger.isLoggable(Level.FINE)) {
+					logger.log(Level.FINE, String.format("%s Resolution failed: ", lk), ioe);
+				}
+				throw ioe;
+			} finally {
+				if (!failed && logger.isLoggable(Level.FINE)) {
+					logger.log(Level.FINE, String.format("%s Resolution complete for %s", lk, url.toExternalForm()));
+				}
 			}
-			if (logger.isLoggable(Level.FINE)) {
-				logger.fine(String.format("%s Exceeded %d attempts. Giving up.", lk, tries - 1));
-			}
-			return null;
 		}
 	}
 
