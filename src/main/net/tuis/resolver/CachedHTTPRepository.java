@@ -170,7 +170,6 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	private static final String MD5        = "CURL_MD5";
 	private static final String CHARSET    = "CURL_CHARSET";
 	private static final String MODIFIED   = "CURL_MODIFIED";
-	private static final String MODIFIEDHR = "CURL_MODIFIEDHR";
 	private static final String RESKEY     = "CURL_RESKEY";
 	private static final String TOUCHTIME  = "CURL_TOUCHED";
 	private static final String SPEEDTIME  = "CURL_SPEED";
@@ -259,11 +258,7 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	 * @return the string representation of the bytes.
 	 */
 	private static final String md5ToString(final byte[] md5) {
-		final StringBuilder sb = new StringBuilder(16);
-		for (byte b : md5) {
-			sb.append(String.format("%02x", b));
-		}
-		return sb.toString();
+		return Base64.encodeToString(md5, false);
 	}
 
 	/**
@@ -379,7 +374,8 @@ public class CachedHTTPRepository implements EntityResolver2 {
 		// needs to be a stringBuffer to use appendReplacement
 		final StringBuffer sb = new StringBuffer();
 		sb.append(url.getProtocol()).append("/");
-		sb.append(url.getAuthority());
+		final String auth = url.getAuthority().replace(':', '~');
+		sb.append(auth);
 		final String path = url.getPath();
 		sb.append(path);
 		final String query = url.getQuery();
@@ -522,6 +518,17 @@ public class CachedHTTPRepository implements EntityResolver2 {
 			}
 
 		}
+	}
+
+	private static final String getFirstHeader(final Map<String,List<String>> headers, final String key) {
+		final List<String> lst = headers.get(key);
+		if (lst == null) {
+			return null;
+		}
+		if (!lst.isEmpty()) {
+			return lst.get(0);
+		}
+		return null;
 	}
 
 	// Where the cache is.
@@ -829,7 +836,7 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	
 								// when do the properties say we expire.
 								final long expires = requireLongProperty(props, EXPIRES);
-								final long lastmod = requireLongProperty(props, MODIFIED);
+								final String lastmod = requireProperty(props, MODIFIED);
 								final String xmd5 = requireProperty(props, MD5);
 								final String charset = requireProperty(props, CHARSET);
 	
@@ -947,7 +954,7 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	 * @throws IOException for the normal reasons.
 	 */
 	private HttpURLConnection getConnection(final String method, final URL url, 
-			final long lastmod) throws IOException {
+			final String lastmod) throws IOException {
 		final HttpURLConnection con = (HttpURLConnection) url.openConnection();
 		// we are a cache ourselves... we want to punch through to the real source.
 		con.setUseCaches(false);
@@ -956,9 +963,10 @@ public class CachedHTTPRepository implements EntityResolver2 {
 		// we only get the HEAD if we previously had the file, but it is out of
 		// date...
 		con.setRequestMethod(method);
-		if (lastmod > 0L) {
+		if (lastmod != null && lastmod.length() > 0) {
 			// we expect there to be a previous copy, with this mod time.
-			con.setIfModifiedSince(lastmod);
+			// avoid bug with getLastModified not parsing time-zone....
+			con.addRequestProperty("If-Modified-Since", lastmod);
 		}
 		// set our user-agent.
 		con.setRequestProperty("User-Agent", useragent.get());
@@ -979,7 +987,7 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	 * @throws CacheEntryCorruptException If the web resource has been changed.
 	 */
 	private void checkResource(final long time, final String lk,
-			final FileChannel channel, final long lastmod, final Properties props,
+			final FileChannel channel, final String lastmod, final Properties props,
 			final URL url) throws IOException, CacheEntryCorruptException {
 		// we need to check that the resource is up to date.
 		// we use the 'HEAD' method to get the state
@@ -992,11 +1000,12 @@ public class CachedHTTPRepository implements EntityResolver2 {
 				}
 				final Map<String, List<String>> headers = con.getHeaderFields();
 				final long exp = calcExpire(time, con.getExpiration(), headers.get("Cache-Control"));
-				final long lmod = con.getLastModified();
+				// bug in getLastModified - does not parse the TimeZone... assumes UTC.
+				//final long lmod = con.getLastModified();
+				final String lmod = getFirstHeader(headers, "Last-Modified");
 				props.setProperty(EXPIRES, Long.toString(exp));
 				props.setProperty(EXPIRESHR, String.format("%tc", exp));
-				props.setProperty(MODIFIED, Long.toString(lmod));
-				props.setProperty(MODIFIEDHR, String.format("%tc", lmod));
+				props.setProperty(MODIFIED, lmod == null ? "" : lmod);
 				// write out the properties
 				propertiesToChannel(channel, props);
 				return;
@@ -1051,7 +1060,7 @@ public class CachedHTTPRepository implements EntityResolver2 {
 			final File datafile, final URL url, final String publicID, final long time) throws IOException {
 		// we need to update the resource.
 		long start = System.currentTimeMillis();
-		final HttpURLConnection con = getConnection("GET", url, 0L);
+		final HttpURLConnection con = getConnection("GET", url, null);
 		try {
 			final int stat = con.getResponseCode();
 			logHeaders(lk, con);
@@ -1066,7 +1075,7 @@ public class CachedHTTPRepository implements EntityResolver2 {
 				}
 				final Map<String, List<String>> headers = con.getHeaderFields();
 				final long exp = calcExpire(time, con.getExpiration(), headers.get("Cache-Control"));
-				final long lmod = con.getLastModified();
+				final String lmod = getFirstHeader(headers, "Last-Modified");
 				final String enc = getCharset(con.getContentType());
 				final String servermd5 = con.getHeaderField("Content-MD5");
 
@@ -1141,8 +1150,7 @@ public class CachedHTTPRepository implements EntityResolver2 {
 					props.setProperty(MD5, mymd5);
 					props.setProperty(EXPIRES, Long.toString(exp));
 					props.setProperty(EXPIRESHR, String.format("%tc", exp));
-					props.setProperty(MODIFIED, Long.toString(lmod));
-					props.setProperty(MODIFIEDHR, String.format("%tc", lmod));
+					props.setProperty(MODIFIED, lmod);
 					props.setProperty(CHARSET, enc == null ? "" : enc);
 					props.setProperty(SYSTEMURL, url.toExternalForm());
 					props.setProperty(RESKEY, key);
