@@ -22,6 +22,7 @@
 	<property name="coverage" value="${dist}/coverage" />
 	<property name="test.xml" value="${dist}/test.xml" />
 	<property name="test.report" value="${dist}/test.report" />
+	<property name="test.logs" value="${dist}/test.logs" />
 	
 	<property name="jar.release" value="${jars}/${name}-${version}.jar" />
 	<property name="jar.source"  value="${jars}/${name}-source-${version}.jar" />
@@ -46,6 +47,8 @@
 		<mkdir dir="${coverage}" />
 		<mkdir dir="${test.xml}" />
 		<mkdir dir="${test.report}" />
+		<mkdir dir="${test.logs}" />
+
 		
 		<echo>${Name} ${version} : ${year} - ${copyright.TODAY}</echo>
 		
@@ -60,22 +63,29 @@
 	</target>
 	
 	<target name="test" depends="compile" >
-		<javac destdir="${tests}" srcdir="src/test" debug="true" optimize="true" includeantruntime="true">
-			<classpath>
-				<pathelement location="${classes}" />
-				<pathelement location="${junit.jar}"/>
-			</classpath>
-		</javac>
+		
+		<property name="jettyver" value="8.1.2.v20120308" />
+		
+		<path id="unit.test.classpath">
+			<pathelement location="${classes}" />
+			<pathelement location="${tests}" />
+			<pathelement location="${junit.jar}"/>
+			<pathelement location="lib/jetty/jetty-continuation-${jettyver}.jar" />
+			<pathelement location="lib/jetty/jetty-http-${jettyver}.jar" />
+			<pathelement location="lib/jetty/jetty-io-${jettyver}.jar" />
+			<pathelement location="lib/jetty/jetty-server-${jettyver}.jar" />
+			<pathelement location="lib/jetty/jetty-util-${jettyver}.jar" />
+			<pathelement location="lib/jetty/servlet-api-3.0.jar" />
+		</path>
+		
+		<javac destdir="${tests}" srcdir="src/test" debug="true" optimize="true" 
+			classpathref="unit.test.classpath" includeantruntime="true"/>
 		
 		<junit fork="true" forkmode="once" haltonerror="false" haltonfailure="false"
 			failureproperty="junit.failed" printsummary="true" timeout="100000"
 			showoutput="true" includeantruntime="true" >
 			
-			<classpath>
-				<pathelement location="${classes}" />
-				<pathelement location="${tests}" />
-				<pathelement location="${junit.jar}" />
-			</classpath>
+			<classpath refid="unit.test.classpath" />
 			
 			<formatter type="xml"/>
 			
@@ -98,6 +108,43 @@
 			
 		  <report format="frames" todir="${test.report}"/>
 		</junitreport>
+		
+		<property name="port" value="54321" />
+		<property name="duration" value="60" />
+		<property name="cachedir" value="${dist}/testcache" />
+		
+		<parallel failonany="true" >
+			
+			<!-- Run the HTTP server in one JVM -->
+			<!-- 
+			    If it fails it probably means that a single resource
+			    was accessed mmultiple times concurrently.
+			    -->
+			<java fork="true" failonerror="true" output="${test.logs}/httpserver.log"
+				classname="net.tuis.resolver.testconcurrent.ResolverTestHTTPServer"
+				classpathref="unit.test.classpath" args="${port} ${duration}"/>
+			<!-- 
+		    cachedir - the Location for the cache data
+		    name     - the Name for this Engine
+		    port     - the port running the test HTTP server
+		    threads  - the number of concurrent threads trying to access the page
+		    refresh  - how long (secs) the page should remain unchanged on the server
+		    delay    - how long (secs) the server should take to serve the page
+		    duration - how long (secs) the test should run
+			-->
+			<java fork="true" failonerror="true" output="${test.logs}/engine.jvm1.log" 
+				classname="net.tuis.resolver.testconcurrent.Engine" classpathref="unit.test.classpath"
+				args= "${cachedir} JVM_1 ${port} 4 10 3 30"/>
+			
+			<java fork="true" failonerror="true" output="${test.logs}/engine.jvm2.log"
+				classname="net.tuis.resolver.testconcurrent.Engine" classpathref="unit.test.classpath"
+				args= "${cachedir} JVM_2 ${port} 4 10 3 30"/>
+			
+			<java fork="true" failonerror="true" output="${test.logs}/engine.jvm3.log"
+				classname="net.tuis.resolver.testconcurrent.Engine" classpathref="unit.test.classpath"
+				args= "${cachedir} JVM_3 ${port} 4 10 3 30"/>
+			
+		</parallel>
 		
 	</target>
 	
