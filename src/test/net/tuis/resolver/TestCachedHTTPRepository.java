@@ -1,12 +1,17 @@
 package net.tuis.resolver;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.io.CharArrayWriter;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.URL;
+import java.util.Properties;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -64,6 +69,40 @@ public class TestCachedHTTPRepository {
 		final String xhtmldtd = result(repo.resolve("-//W3C//DTD XHTML 1.0 Strict//EN",
 				new URL("http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd")));
 		assertTrue(xhtmldtd != null);
+	}
+	
+	private void copyResource(final File destination, final InputStream source) throws IOException {
+		destination.getParentFile().mkdirs();
+		final FileOutputStream fos = new FileOutputStream(destination);
+		final byte[] buffer = new byte[1024];
+		int len = 0;
+		while ((len = source.read(buffer)) >= 0) {
+			fos.write(buffer, 0, len);
+		}
+		fos.flush();
+		fos.close();
+		source.close();
+	}
+	
+	@Test
+	public void testResolveNoConnection() throws IOException {
+		final Properties props = new Properties();
+		final String resbase = TestCachedHTTPRepository.class.getName().replace('.', '/');
+		final InputStream is = ClassLoader.getSystemResourceAsStream(resbase + "_control");
+		props.load(is);
+		final String key = props.getProperty("CURL_RESKEY");
+		final String url = props.getProperty("CURL_URL");
+		
+		final CachedHTTPRepository repo = new CachedHTTPRepository();
+
+		final File control = new File(repo.getCacheFolder(), key + ".control");
+		final File data    = new File(repo.getCacheFolder(), key + ".data");
+		
+		copyResource(control, ClassLoader.getSystemResourceAsStream(resbase + "_control"));
+		copyResource(data,    ClassLoader.getSystemResourceAsStream(resbase + "_data"));
+		
+		final String val = result(repo.resolve(null, new URL(url)));
+		assertEquals("0001332089779999\n", val);
 	}
 	
 }

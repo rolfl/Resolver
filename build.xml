@@ -69,6 +69,7 @@
 		
 		<path id="unit.test.classpath">
 			<pathelement location="${classes}" />
+			<pathelement location="src/test" />
 			<pathelement location="${tests}" />
 			<pathelement location="${junit.jar}"/>
 			<pathelement location="lib/jetty/jetty-continuation-${jettyver}.jar" />

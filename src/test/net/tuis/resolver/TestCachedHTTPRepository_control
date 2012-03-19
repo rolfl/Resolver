@@ -1,0 +1,21 @@
+#CachedHTTPRepository
+#Sun Mar 18 12:56:19 EDT 2012
+Date=Sun, 18 Mar 2012 12\:56\:17 EDT
+Cache-Control=max-age\=2
+CURL_URL=http\://localhost\:4321/TestCachedHTTPRepository
+CURL_EXPIRES=1332089777935
+Content-MD5=mmZ+h1I5Dvku8mh4Rt1RBQ\=\=
+CURL_EXPIRESHR=Sun Mar 18 12\:56\:17 EDT 2012
+Expires=Sun, 18 Mar 2012 12\:56\:19 EDT
+CURL_CHARSET=ISO-8859-1
+Content-Type=text/plain;charset\=ISO-8859-1
+CURL_MODIFIEDHR=Sun Mar 18 08\:56\:15 EDT 2012
+Server=Jetty(8.1.2.v20120308)
+CURL_MD5=mmZ+h1I5Dvku8mh4Rt1RBQ\=\=
+null=HTTP/1.1 200 OK
+CURL_CREATED=Sun Mar 18 12\:56\:19 EDT 2012
+Last-Modified=Sun, 18 Mar 2012 12\:56\:15 EDT
+CURL_RESKEY=http/localhost~4321/TestCachedHTTPRepository
+CURL_SPEED=2.004 seconds
+CURL_MODIFIED=1332075375000
+Content-Length=17

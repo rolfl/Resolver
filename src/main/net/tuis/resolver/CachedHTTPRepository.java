@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.net.HttpURLConnection;
+import java.net.SocketException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -128,6 +129,22 @@ public class CachedHTTPRepository implements EntityResolver2 {
 
 		public CacheEntryCorruptException(String message) {
 			super(message);
+		}
+
+	}
+
+	/**
+	 * Used to indicate that there is network problem with a URL.
+	 * 
+	 * @author Rolf Lear
+	 *
+	 */
+	private static final class NoAccessException extends Exception {
+
+		private static final long serialVersionUID = 1L;
+
+		public NoAccessException(String message, Throwable cause) {
+			super(message, cause);
 		}
 
 	}
@@ -592,6 +609,14 @@ public class CachedHTTPRepository implements EntityResolver2 {
 		locktimeout.set(30000); // 30 seconds.
 		cachefolder = cachedir;
 	}
+	
+	/**
+	 * Get the location of the Cache.
+	 * @return The Cache folder location.
+	 */
+	public File getCacheFolder() {
+		return cachefolder;
+	}
 
 	/**
 	 * Get the current user agent used by this Repository
@@ -844,6 +869,8 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	
 								checkProperty(props, RESKEY, kk);
 								checkProperty(props, SYSTEMURL, urlef);
+								
+								boolean stale = false;
 	
 								// all properties are in order
 								// cache entry is complete...
@@ -872,7 +899,14 @@ public class CachedHTTPRepository implements EntityResolver2 {
 									// resource is up to date on the server....
 									// if the server file has changed, we throw a
 									// CacheEntryCorrupt exception....
-									checkResource(time, lk, channel, lastmod, props, url);
+									try {
+										checkResource(time, lk, channel, lastmod, props, url);
+									} catch (NoAccessException nae) {
+										// we have an existing, expired, but otherwise valid cache
+										// entry. We cannot connect to a network. We return the expired
+										// entry.
+										stale = true;
+									}
 	
 								}
 	
@@ -887,7 +921,7 @@ public class CachedHTTPRepository implements EntityResolver2 {
 								rafxthrow = true;
 	
 								// return our new resource
-								return new Resource(data, null, charset, publicID, urlef, expires);
+								return new Resource(data, null, charset, publicID, urlef, expires, stale);
 	
 							} catch (CacheEntryCorruptException cece) {
 								if (lockshared) {
@@ -902,10 +936,18 @@ public class CachedHTTPRepository implements EntityResolver2 {
 								}
 								// we have an exclusive lock, and there's something amiss with the
 								// cache entry, recreate it.
-								final Resource ret = recreateResource(lk, kk, channel, datafile, url, publicID, time);
-								// indicate a close() failure should be thrown
-								rafxthrow = true;
-								return ret;
+								try {
+									final Resource ret = recreateResource(lk, kk, channel, datafile, url, publicID, time);
+									// indicate a close() failure should be thrown
+									rafxthrow = true;
+									return ret;
+								} catch (NoAccessException nae) {
+									final Throwable cause = nae.getCause();
+									if (cause instanceof IOException) {
+										throw (IOException)cause;
+									}
+									throw new IOException("Unable to recreate Resource " + url, cause);
+								}
 							}
 	
 						} finally {
@@ -954,7 +996,7 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	 * @throws IOException for the normal reasons.
 	 */
 	private HttpURLConnection getConnection(final String method, final URL url, 
-			final String lastmod) throws IOException {
+			final String lastmod) throws NoAccessException, IOException {
 		final HttpURLConnection con = (HttpURLConnection) url.openConnection();
 		// we are a cache ourselves... we want to punch through to the real source.
 		con.setUseCaches(false);
@@ -971,7 +1013,14 @@ public class CachedHTTPRepository implements EntityResolver2 {
 		// set our user-agent.
 		con.setRequestProperty("User-Agent", useragent.get());
 		// push through the actual connection.
-		con.connect();
+		try {
+			con.connect();
+		} catch (SocketException ce) {
+			if (logger.isLoggable(Level.FINE)) {
+				logger.log(Level.FINE, "Unable to connect to " + url, ce);
+			}
+			throw new NoAccessException("Unable to connect to URL", ce);
+		}
 		return con;
 	}
 
@@ -985,10 +1034,11 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	 * @param url The url of the web resource
 	 * @throws IOException If there is a read problem
 	 * @throws CacheEntryCorruptException If the web resource has been changed.
+	 * @throws NoAccessException 
 	 */
 	private void checkResource(final long time, final String lk,
 			final FileChannel channel, final String lastmod, final Properties props,
-			final URL url) throws IOException, CacheEntryCorruptException {
+			final URL url) throws IOException, CacheEntryCorruptException, NoAccessException {
 		// we need to check that the resource is up to date.
 		// we use the 'HEAD' method to get the state
 		final HttpURLConnection con = getConnection("HEAD", url, lastmod);
@@ -1057,7 +1107,8 @@ public class CachedHTTPRepository implements EntityResolver2 {
 	}
 
 	private Resource recreateResource(final String lk, final String key, final FileChannel channel,
-			final File datafile, final URL url, final String publicID, final long time) throws IOException {
+			final File datafile, final URL url, final String publicID, final long time)
+					throws IOException, NoAccessException {
 		// we need to update the resource.
 		long start = System.currentTimeMillis();
 		final HttpURLConnection con = getConnection("GET", url, null);
@@ -1164,7 +1215,7 @@ public class CachedHTTPRepository implements EntityResolver2 {
 					fos.close();
 					fosok = true;
 
-					return new Resource(baos.toByteArray(), null, enc, publicID, url.toExternalForm(), exp);
+					return new Resource(baos.toByteArray(), null, enc, publicID, url.toExternalForm(), exp, false);
 
 				} finally {
 					if (!fosok) {

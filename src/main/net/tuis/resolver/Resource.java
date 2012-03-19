@@ -22,6 +22,7 @@ public final class Resource extends InputSource {
 	private final String publicID;
 	private final String systemID;
 	private final long expires;
+	private final boolean stale;
 
 	/**
 	 * Construct a resource.
@@ -31,10 +32,11 @@ public final class Resource extends InputSource {
 	 * @param publicID The publicID (may be null)
 	 * @param systemID The systemID
 	 * @param expires When this Resource expires.
+	 * @param stale indicates whether this Resource is stale.
 	 */
 	public Resource(final byte[] bdata, final char[] cdata, 
 			final String encoding, final String publicID,
-			final String systemID, final long expires) {
+			final String systemID, final long expires, final boolean stale) {
 		super();
 		this.bdata = bdata;
 		this.cdata = cdata;
@@ -42,6 +44,7 @@ public final class Resource extends InputSource {
 		this.publicID = publicID;
 		this.systemID = systemID;
 		this.expires = expires;
+		this.stale = stale;
 	}
 
 	@Override
@@ -70,8 +73,23 @@ public final class Resource extends InputSource {
 		return systemID;
 	}
 
-	long getExpires() {
+	/**
+	 * Get the time at which this entry expires.
+	 * @return The expires time.
+	 */
+	public long getExpires() {
 		return expires;
+	}
+	
+	/**
+	 * Indicate whether the cache entry was retuened even though it is stale.
+	 * If true it means that we have an expired cache entry, but there is no
+	 * way to connect to the origin server to revalidate it.
+	 * 
+	 * @return true if this Resource is stale.
+	 */
+	public boolean isStale() {
+		return stale;
 	}
 	
 
