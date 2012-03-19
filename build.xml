@@ -59,6 +59,7 @@
 		<jar destfile="${jar.release}">
 			<fileset dir="${classes}" includes="**" />
 			<fileset dir="${basedir}" includes="LICENSE, NOTICE" />
+			<fileset dir="src/main" includes="**/Base64*" />
 		</jar>
 	</target>
 	
@@ -110,7 +111,7 @@
 		</junitreport>
 		
 		<property name="port" value="54321" />
-		<property name="duration" value="60" />
+		<property name="duration" value="35" />
 		<property name="cachedir" value="${dist}/testcache" />
 		
 		<parallel failonany="true" >
@@ -165,6 +166,15 @@
 	</target>
 	
 	<target name="dist" depends="test, apidoc">
-		
+		<jar destfile="${jar.apidoc}">
+			<fileset dir="${apidocs}" includes="**" />
+		</jar>
+		<jar destfile="${jar.source}">
+			<fileset dir="src/main" includes="**" />
+		</jar>
+		<zip destfile="${dist}/${name}-${version}.zip">
+			<fileset dir="${jars}" includes="*.jar"/>
+			<fileset dir="${basedir}" includes="LICENSE, NOTICE" />
+		</zip>
 	</target>
 </project>

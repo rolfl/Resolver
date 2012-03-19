@@ -36,7 +36,7 @@ import java.util.Arrays;
  * the input is known and it hasn't bee tampered with.<br><br>
  *
  * If you find the code useful or you find a bug, please send me a note at base64 @ miginfocom . com.
- *
+ * <pre>
  * Licence (BSD):
  * ==============
  *
@@ -65,6 +65,8 @@ import java.util.Arrays;
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
  * OF SUCH DAMAGE.
  *
+ * </pre>
+ * 
  * @version 2.2
  * @author Mikael Grev
  *         Date: 2004-aug-02
